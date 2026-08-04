@@ -1,6 +1,3 @@
-这里为你重写了一版更加规范、客观的开发者文档风格 README，去除了原本过于夸张的营销词汇和冗余的 Emoji：
-
-```markdown
 # Whisper-Fast-GUI
 
 Whisper-Fast-GUI 是一个基于 `faster-whisper` 的轻量级音视频字幕提取桌面工具。其图形用户界面（GUI）完全使用 Python 内置的 `tkinter` 库编写，无需额外安装复杂的 GUI 框架。
@@ -53,7 +50,3 @@ python WhisperGUI.py
 * 增加多语言识别与翻译支持
 * 引入人声分离功能
 * GUI 界面与交互逻辑优化
-
-```
-
-```
