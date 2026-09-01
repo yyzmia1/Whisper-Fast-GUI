@@ -1,10 +1,18 @@
 import os
 import sys
+import shutil
+import subprocess
 import threading
 import json
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
 from tkinter import ttk
+
+# ==========================================
+# 软件路径基准定义 (绿色便携，本地化存放)
+# ==========================================
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+MODELS_DIR = os.path.join(APP_DIR, "models")
 
 # ==========================================
 # 自动加载 CUDA 核心组件库，彻底解决 0xc0000142 和 dll 报错
@@ -50,11 +58,11 @@ class WhisperApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Whisper视频字幕提取助手")
-        self.root.geometry("700x550")
+        self.root.geometry("720x570")
         
         self.files = []
         self.is_running = False
-        self.config_path = os.path.join(os.environ.get("USERPROFILE", ""), ".whisper_gui_config.json")
+        self.config_path = os.path.join(APP_DIR, ".whisper_gui_config.json")
         
         # 顶部控制区
         frame_top = ttk.Frame(root, padding=10)
@@ -83,7 +91,7 @@ class WhisperApp:
         device_cb = ttk.Combobox(frame_row1, textvariable=self.device_var, values=["GPU (cuda)", "CPU (cpu)"], state="readonly", width=12)
         device_cb.pack(side=tk.LEFT)
         
-        # 第二行：按钮
+        # 第二行：操作按钮与清理卸载
         frame_row2 = ttk.Frame(frame_top)
         frame_row2.pack(fill=tk.X, pady=5)
         
@@ -94,7 +102,10 @@ class WhisperApp:
         self.btn_start.pack(side=tk.LEFT, padx=(0, 10))
         
         self.btn_stop = ttk.Button(frame_row2, text="🛑 3.强制终止", command=self.stop_processing, state=tk.DISABLED)
-        self.btn_stop.pack(side=tk.LEFT)
+        self.btn_stop.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.btn_clean = ttk.Button(frame_row2, text="🗑️ 卸载与清理", command=self.open_clean_dialog)
+        self.btn_clean.pack(side=tk.RIGHT)
         
         # 中间文件列表区
         frame_mid = ttk.Frame(root, padding=10)
@@ -122,15 +133,21 @@ class WhisperApp:
         sys.stderr = redir
         
         print("💡 欢迎使用 Whisper 字幕助手！")
-        print("⚠️ 如果初次运行某个级别的模型，会从 HuggingFace 自动下载模型文件，请耐心等待。")
+        print(f"📁 模型存放目录：{MODELS_DIR} (软件同级目录，绿色便携)")
+        print("⚠️ 如果初次运行某个级别的模型，会从 HuggingFace 自动下载模型文件到该目录，请耐心等待。")
         print("--------------------------------------------------\n")
         
         self.load_config()
 
     def load_config(self):
         try:
-            if os.path.exists(self.config_path):
-                with open(self.config_path, "r", encoding="utf-8") as f:
+            cfg_path = self.config_path
+            if not os.path.exists(cfg_path):
+                legacy_path = os.path.join(os.environ.get("USERPROFILE", ""), ".whisper_gui_config.json")
+                if os.path.exists(legacy_path):
+                    cfg_path = legacy_path
+            if os.path.exists(cfg_path):
+                with open(cfg_path, "r", encoding="utf-8") as f:
                     cfg = json.load(f)
                 if "model" in cfg: self.model_var.set(cfg["model"])
                 if "srt" in cfg: self.var_srt.set(cfg["srt"])
@@ -223,6 +240,7 @@ class WhisperApp:
         
         print(f"\n==================================================")
         print(f"▶️ 正在召唤 {device_str.upper()} 加载【{model_size}】模型 (初次约需几秒至几分钟下载)...")
+        print(f"📁 模型存储路径: {MODELS_DIR}")
         
         try:
             from faster_whisper import WhisperModel
@@ -232,7 +250,8 @@ class WhisperApp:
             return
             
         try:
-            model = WhisperModel(model_size, device=device_str, compute_type=compute_type_str)
+            os.makedirs(MODELS_DIR, exist_ok=True)
+            model = WhisperModel(model_size, device=device_str, compute_type=compute_type_str, download_root=MODELS_DIR)
             print(f"✅ 模型加载成功！{device_str.upper()} 已就绪！")
         except Exception as e:
             print(f"❌ 模型加载失败: {e}")
@@ -321,6 +340,129 @@ class WhisperApp:
         self.root.after(0, lambda: self.btn_start.config(state=tk.NORMAL))
         self.root.after(0, lambda: self.btn_select.config(state=tk.NORMAL))
         self.root.after(0, lambda: self.btn_stop.config(state=tk.DISABLED))
+
+    def get_dir_size_str(self, path):
+        """计算指定目录的总文件大小并格式化为字符串"""
+        if not os.path.exists(path):
+            return "0 MB (未下载)"
+        total_size = 0
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                if os.path.exists(fp):
+                    total_size += os.path.getsize(fp)
+        if total_size == 0:
+            return "0 MB"
+        elif total_size < 1024 * 1024:
+            return f"{total_size / 1024:.1f} KB"
+        elif total_size < 1024 * 1024 * 1024:
+            return f"{total_size / (1024 * 1024):.1f} MB"
+        else:
+            return f"{total_size / (1024 * 1024 * 1024):.2f} GB"
+
+    def open_clean_dialog(self):
+        """打开数据清理与卸载管理对话框"""
+        if self.is_running:
+            messagebox.showwarning("提示", "当前有任务正在运行中，请先停止任务后再进行清理！")
+            return
+
+        clean_win = tk.Toplevel(self.root)
+        clean_win.title("数据清理与卸载")
+        clean_win.geometry("460x280")
+        clean_win.resizable(False, False)
+        clean_win.transient(self.root)
+        clean_win.grab_set()
+
+        models_size_str = self.get_dir_size_str(MODELS_DIR)
+
+        pad_frame = ttk.Frame(clean_win, padding=20)
+        pad_frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(pad_frame, text="🧹 数据清理与卸载管理", font=("", 11, "bold")).pack(anchor=tk.W, pady=(0, 10))
+        
+        info_text = (
+            f"• 模型存放目录: ./models/\n"
+            f"• 当前模型占用: {models_size_str}\n"
+            f"• 本地配置文件: .whisper_gui_config.json\n\n"
+            f"提示：所有模型均下载在当前软件同级目录下，不会污染系统 C 盘。"
+        )
+        ttk.Label(pad_frame, text=info_text, justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 15))
+
+        def do_clean_cache():
+            if messagebox.askyesno("确认清理", "确定要清空已下载的模型文件、配置文件与运行缓存吗？\n\n（操作将释放磁盘空间，软件仍可正常使用）", parent=clean_win):
+                clean_win.destroy()
+                self.clean_generated_files()
+
+        def do_uninstall_all():
+            if messagebox.askyesno("确认彻底卸载", "⚠️ 警告：彻底卸载将清空所有已下载模型、配置文件，并在退出程序后自动删除本软件所有文件！\n\n确定要继续彻底卸载吗？", parent=clean_win):
+                clean_win.destroy()
+                self.uninstall_all_files()
+
+        btn_frame = ttk.Frame(pad_frame)
+        btn_frame.pack(fill=tk.X)
+
+        ttk.Button(btn_frame, text="🗑️ 仅清理模型与缓存 (释放磁盘)", command=do_clean_cache).pack(fill=tk.X, pady=3)
+        ttk.Button(btn_frame, text="💥 彻底卸载本软件 (删除所有文件)", command=do_uninstall_all).pack(fill=tk.X, pady=3)
+        ttk.Button(btn_frame, text="取消", command=clean_win.destroy).pack(fill=tk.X, pady=3)
+
+    def clean_generated_files(self):
+        """一键清理软件产生的所有文件（模型、配置、缓存）"""
+        print("\n==================================================")
+        print("🧹 正在开始清理已产生的数据与缓存...")
+        
+        # 1. 删除 models 目录
+        if os.path.exists(MODELS_DIR):
+            try:
+                shutil.rmtree(MODELS_DIR)
+                print(f"✅ 已清空本地模型目录: {MODELS_DIR}")
+            except Exception as e:
+                print(f"❌ 删除模型目录失败: {e}")
+        else:
+            print("ℹ️ 本地模型目录为空，无需清理。")
+
+        # 2. 删除配置文件
+        for cfg in [self.config_path, os.path.join(os.environ.get("USERPROFILE", ""), ".whisper_gui_config.json")]:
+            if os.path.exists(cfg):
+                try:
+                    os.remove(cfg)
+                    print(f"✅ 已删除配置文件: {cfg}")
+                except Exception as e:
+                    print(f"❌ 删除配置文件失败: {e}")
+
+        # 3. 删除 __pycache__
+        pycache_dir = os.path.join(APP_DIR, "__pycache__")
+        if os.path.exists(pycache_dir):
+            try:
+                shutil.rmtree(pycache_dir)
+                print(f"✅ 已清理 Python 缓存: {pycache_dir}")
+            except Exception as e:
+                pass
+
+        print("🎉 缓存与模型文件已清理完毕，磁盘空间已释放！\n==================================================\n")
+        messagebox.showinfo("提示", "模型文件与配置文件已全部清理完成，磁盘空间已释放！")
+
+    def uninstall_all_files(self):
+        """彻底卸载本软件并自清理"""
+        print("\n==================================================")
+        print("⚠️ 正在准备彻底卸载本软件...")
+        
+        # 1. 先清理生成文件
+        if os.path.exists(MODELS_DIR):
+            shutil.rmtree(MODELS_DIR, ignore_errors=True)
+        for cfg in [self.config_path, os.path.join(os.environ.get("USERPROFILE", ""), ".whisper_gui_config.json")]:
+            if os.path.exists(cfg):
+                try: os.remove(cfg)
+                except Exception: pass
+        pycache_dir = os.path.join(APP_DIR, "__pycache__")
+        if os.path.exists(pycache_dir):
+            shutil.rmtree(pycache_dir, ignore_errors=True)
+
+        # 2. 调度自删除命令并退出
+        cmd = f'cmd.exe /c (ping 127.0.0.1 -n 3 > nul & rd /s /q "{APP_DIR}")'
+        subprocess.Popen(cmd, shell=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        messagebox.showinfo("卸载完成", "已完成清理，软件目录将在程序退出后自动删除。")
+        self.root.destroy()
+        sys.exit(0)
 
 if __name__ == "__main__":
     root = tk.Tk()

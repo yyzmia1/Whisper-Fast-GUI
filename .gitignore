@@ -1,4 +1,6 @@
 __pycache__/
 *.pyc
 .whisper_gui_config.json
+models/
 .vscode/
+
