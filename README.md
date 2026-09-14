@@ -1,68 +1,101 @@
 # Whisper-Fast-GUI
 
-Whisper-Fast-GUI 是一个基于 `faster-whisper` 的轻量级音视频字幕提取桌面工具。其图形用户界面（GUI）完全使用 Python 内置的 `tkinter` 库编写，无需额外安装复杂的 GUI 框架。
+**English** | [简体中文](README.zh-CN.md)
 
-## 主要特性
+A lightweight desktop application for transcribing audio and video with
+[`faster-whisper`](https://github.com/SYSTRAN/faster-whisper). The interface is
+built entirely with Python's standard `tkinter` library, keeping the project
+small, portable, and easy to run on Windows.
 
-- **轻量便携**：界面纯 Python 标准库编写，主逻辑集中于单文件。
-- **本地存储**：模型默认下载至程序同级 `./models/` 目录，完全绿色免安装，不污染系统 C 盘。
-- **硬件加速**：底层基于 CTranslate2 + faster-whisper，支持 GPU 加速提取。
-- **文件拖拽**：支持直接将音视频文件拖入软件窗口并自动加入处理队列。
-- **配置保存**：自动在程序目录下记忆上次使用的模型精度、输出格式和硬件设备。
-- **多格式导出**：支持同时输出 SRT、VTT 和 TXT 格式。
-- **任务管理**：支持在处理过程中强制终止任务，并正常释放硬件资源。
-- **一键卸载/清理**：
-  - **界面内置**：点击 GUI 右上角的 **「🗑️ 卸载与清理」** 按钮，可随时清理模型缓存释放空间或彻底卸载。
-  - **脚本辅助**：提供根目录下的 `Uninstall.bat`，未启动程序时也可直接双击一键清理/卸载。
-- **静默运行**：提供 Windows 下的 `.vbs` 脚本，可隐藏命令行（CMD）窗口启动。
+## Features
 
-## 环境依赖与安装
+- **Lightweight and portable** — the interface and application logic are kept
+  in a compact Python codebase without a heavyweight GUI framework.
+- **Local model storage** — downloaded models are stored in `./models/` next to
+  the application instead of filling the system drive.
+- **GPU acceleration** — powered by CTranslate2 and faster-whisper, with NVIDIA
+  CUDA acceleration support.
+- **Drag and drop** — drop audio or video files onto the window to add them to
+  the processing queue.
+- **Saved preferences** — remembers the selected model, compute type, output
+  formats, and hardware device.
+- **Multiple export formats** — generate SRT, VTT, and TXT files in one run.
+- **Task controls** — stop an active transcription while allowing hardware
+  resources to be released cleanly.
+- **Built-in cleanup** — remove downloaded models and caches, or uninstall the
+  application from the GUI or with `Uninstall.bat`.
+- **Silent Windows launcher** — start the application with
+  `Start-WhisperGUI.vbs` without keeping a Command Prompt window open.
 
-请确保系统已安装 Python 3.9 或更高版本。在项目根目录下执行以下命令安装依赖：
+## Requirements
+
+- Windows
+- Python 3.9 or later
+- An NVIDIA GPU is optional; CPU transcription is supported
+
+## Installation
+
+Clone or download this repository, open a terminal in the project directory,
+and install the dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**Windows NVIDIA 显卡用户注意：**
-如果默认 Python 环境在加载 faster-whisper 时提示 `cublas64_12.dll is not found` 或报 `0xc0000142` 错误，说明系统缺少 CUDA 运行库。
-若未安装完整的 PyTorch 环境，可通过执行以下命令补充所需依赖（源码已内置驱动寻址，无需手动配置环境变量）：
+### NVIDIA CUDA runtime
+
+If faster-whisper reports that `cublas64_12.dll` is missing or exits with error
+`0xc0000142`, install the required CUDA runtime packages:
 
 ```bash
 pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12
 ```
 
-## 启动方式
+The application includes runtime library discovery, so you do not need to edit
+environment variables manually.
 
-**方式一：无命令行窗口启动（仅限 Windows，推荐）**
-双击根目录下的 `Start-WhisperGUI.vbs` 文件，软件将以无命令行窗口的形式启动。
+## Usage
 
-**方式二：命令行启动**
-在终端或命令行中执行：
+### Launch without a console window (recommended on Windows)
+
+Double-click `Start-WhisperGUI.vbs`.
+
+### Launch from a terminal
 
 ```bash
 python WhisperGUI.py
 ```
 
-## 模型存储与清理说明
+Then choose a Whisper model and hardware device, select one or more output
+formats, add your media files, and start transcription. Models are downloaded
+automatically on first use.
 
-### 📁 模型存储位置
-当您首次选择并运行某个模型精度时，程序会自动从 HuggingFace 下载对应模型至本软件根目录下的：
+## Model storage and cleanup
+
+Models are saved under:
+
 ```text
 ./models/
 ```
-所有生成的数据与模型均集中在软件目录内，便于移动或拷贝至移动硬盘。
 
-### 🧹 一键清理与卸载
-如需释放磁盘空间或卸载本工具，可使用以下两种方式之一：
-1. **通过软件界面**：在主界面点击 **「🗑️ 卸载与清理」** 按钮，选择 **「仅清理模型与缓存」** 或 **「彻底卸载本软件」**。
-2. **通过脚本操作**：双击运行根目录下的 `Uninstall.bat` 脚本，按提示选择一键清理或彻底卸载。
+Keeping models inside the project directory makes the application easy to move
+between folders or external drives.
 
-## 参与贡献
+To reclaim disk space, use the **🗑️ 卸载与清理 (Uninstall & Cleanup)** action in
+the top-right corner of the application and select either model/cache cleanup
+or a complete uninstall. You can also double-click `Uninstall.bat` while the
+application is closed.
 
-欢迎对本项目提交 Pull Request。目前计划或希望改进的方向包括：
+## Contributing
 
-* 增加多语言识别与翻译支持
-* 引入人声分离功能
-* GUI 界面与交互逻辑优化
+Pull requests and issue reports are welcome. Potential areas for improvement
+include:
 
+- Multilingual transcription and translation workflows
+- Vocal separation
+- GUI and interaction refinements
+
+## License
+
+No license file is currently included. Unless a license is added, normal
+copyright restrictions apply to the source code.
