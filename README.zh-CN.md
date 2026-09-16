@@ -9,6 +9,7 @@ Whisper-Fast-GUI 是一个基于
 
 - **轻量便携**：不依赖大型 GUI 框架，界面与主要逻辑集中在简洁的 Python 代码中。
 - **模型本地存储**：模型默认下载至程序同级的 `./models/`，避免占用系统盘的全局缓存空间。
+- **下载源切换**：可在界面中切换 Hugging Face 官方源与 `hf-mirror.com` 国内镜像。
 - **GPU 加速**：底层基于 CTranslate2 与 faster-whisper，支持 NVIDIA CUDA 加速。
 - **文件拖拽**：可将音频或视频文件直接拖入窗口，自动加入处理队列。
 - **配置记忆**：自动保存所选模型、计算精度、输出格式和硬件设备。
@@ -40,6 +41,15 @@ pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12
 ```
 
 程序已包含运行库路径查找逻辑，无需手动修改环境变量。
+
+### 模型下载源与 `HF_TOKEN`
+
+开始任务前，可在界面中选择模型下载源：
+
+- **Hugging Face 官方源**为默认选项。公开模型无需登录也能下载；未认证请求的 Warning 只是提示匿名请求的速率额度较低，并非下载错误。
+- **国内镜像（`hf-mirror.com`）**适合无法稳定直连 Hugging Face 的网络环境。为了安全，程序不会把 Hugging Face Token 发送给第三方镜像。
+
+如需提高官方源的请求额度，可先运行一次 `hf auth login`，或在启动程序前设置可选的 `HF_TOKEN` 环境变量。程序不会将 Token 写入本地配置文件。
 
 ## 使用方法
 

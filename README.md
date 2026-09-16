@@ -13,6 +13,8 @@ small, portable, and easy to run on Windows.
   in a compact Python codebase without a heavyweight GUI framework.
 - **Local model storage** — downloaded models are stored in `./models/` next to
   the application instead of filling the system drive.
+- **Selectable download source** — switch between the official Hugging Face Hub
+  and the `hf-mirror.com` mirror from the GUI.
 - **GPU acceleration** — powered by CTranslate2 and faster-whisper, with NVIDIA
   CUDA acceleration support.
 - **Drag and drop** — drop audio or video files onto the window to add them to
@@ -53,6 +55,21 @@ pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12
 
 The application includes runtime library discovery, so you do not need to edit
 environment variables manually.
+
+### Model download source and `HF_TOKEN`
+
+Choose the model download source in the GUI before starting a task:
+
+- **Hugging Face official** is the default and can download public models
+  without signing in. The unauthenticated-request warning only means that lower
+  rate limits apply.
+- **China mirror (`hf-mirror.com`)** can be selected when direct Hugging Face
+  access is slow or unavailable. The application deliberately does not send
+  your Hugging Face token to this third-party mirror.
+
+For higher rate limits on the official source, either run `hf auth login` once
+or set the optional `HF_TOKEN` environment variable before launching the
+application. The token is never written to the application configuration file.
 
 ## Usage
 

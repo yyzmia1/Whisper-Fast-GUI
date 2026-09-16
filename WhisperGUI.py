@@ -14,6 +14,44 @@ from tkinter import ttk
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(APP_DIR, "models")
 
+OFFICIAL_DOWNLOAD_SOURCE = "Hugging Face 官方源"
+MIRROR_DOWNLOAD_SOURCE = "国内镜像 (hf-mirror.com)"
+DOWNLOAD_SOURCES = {
+    OFFICIAL_DOWNLOAD_SOURCE: "https://huggingface.co",
+    MIRROR_DOWNLOAD_SOURCE: "https://hf-mirror.com",
+}
+
+
+def configure_hf_download_source(source_name):
+    """Configure huggingface_hub before faster-whisper starts a download."""
+    endpoint = DOWNLOAD_SOURCES.get(source_name, DOWNLOAD_SOURCES[OFFICIAL_DOWNLOAD_SOURCE])
+    os.environ["HF_ENDPOINT"] = endpoint
+
+    # huggingface_hub reads HF_ENDPOINT when it is imported. Update its cached
+    # constants as well so switching sources still works later in the same run.
+    try:
+        from huggingface_hub import constants
+
+        constants.ENDPOINT = endpoint
+        constants.HUGGINGFACE_CO_URL_HOME = f"{endpoint}/"
+        constants.HUGGINGFACE_CO_URL_TEMPLATE = (
+            f"{endpoint}/{{repo_id}}/resolve/{{revision}}/{{filename}}"
+        )
+    except ImportError:
+        pass
+
+    return endpoint
+
+
+def has_hf_auth_token():
+    """Return whether huggingface_hub can find an environment or saved token."""
+    try:
+        from huggingface_hub import get_token
+
+        return bool(get_token())
+    except Exception:
+        return bool(os.environ.get("HF_TOKEN"))
+
 # ==========================================
 # 自动加载 CUDA 核心组件库，彻底解决 0xc0000142 和 dll 报错
 # ==========================================
@@ -58,7 +96,7 @@ class WhisperApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Whisper视频字幕提取助手")
-        self.root.geometry("720x570")
+        self.root.geometry("720x610")
         
         self.files = []
         self.is_running = False
@@ -91,20 +129,40 @@ class WhisperApp:
         device_cb = ttk.Combobox(frame_row1, textvariable=self.device_var, values=["GPU (cuda)", "CPU (cpu)"], state="readonly", width=12)
         device_cb.pack(side=tk.LEFT)
         
-        # 第二行：操作按钮与清理卸载
+        # 第二行：模型下载源
         frame_row2 = ttk.Frame(frame_top)
         frame_row2.pack(fill=tk.X, pady=5)
+
+        ttk.Label(frame_row2, text="模型下载源:").pack(side=tk.LEFT, padx=(0, 5))
+        self.download_source_var = tk.StringVar(value=OFFICIAL_DOWNLOAD_SOURCE)
+        self.download_source_cb = ttk.Combobox(
+            frame_row2,
+            textvariable=self.download_source_var,
+            values=list(DOWNLOAD_SOURCES.keys()),
+            state="readonly",
+            width=25,
+        )
+        self.download_source_cb.pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(
+            frame_row2,
+            text="国内镜像无需 Token；官方源可选用 HF_TOKEN",
+            foreground="#666666",
+        ).pack(side=tk.LEFT)
+
+        # 第三行：操作按钮与清理卸载
+        frame_row3 = ttk.Frame(frame_top)
+        frame_row3.pack(fill=tk.X, pady=5)
         
-        self.btn_select = ttk.Button(frame_row2, text="📂 1.选择视频文件", command=self.select_files)
+        self.btn_select = ttk.Button(frame_row3, text="📂 1.选择视频文件", command=self.select_files)
         self.btn_select.pack(side=tk.LEFT, padx=(0, 10))
         
-        self.btn_start = ttk.Button(frame_row2, text="🚀 2.开始提取", command=self.start_processing)
+        self.btn_start = ttk.Button(frame_row3, text="🚀 2.开始提取", command=self.start_processing)
         self.btn_start.pack(side=tk.LEFT, padx=(0, 10))
         
-        self.btn_stop = ttk.Button(frame_row2, text="🛑 3.强制终止", command=self.stop_processing, state=tk.DISABLED)
+        self.btn_stop = ttk.Button(frame_row3, text="🛑 3.强制终止", command=self.stop_processing, state=tk.DISABLED)
         self.btn_stop.pack(side=tk.LEFT, padx=(0, 10))
         
-        self.btn_clean = ttk.Button(frame_row2, text="🗑️ 卸载与清理", command=self.open_clean_dialog)
+        self.btn_clean = ttk.Button(frame_row3, text="🗑️ 卸载与清理", command=self.open_clean_dialog)
         self.btn_clean.pack(side=tk.RIGHT)
         
         # 中间文件列表区
@@ -134,7 +192,7 @@ class WhisperApp:
         
         print("💡 欢迎使用 Whisper 字幕助手！")
         print(f"📁 模型存放目录：{MODELS_DIR} (软件同级目录，绿色便携)")
-        print("⚠️ 如果初次运行某个级别的模型，会从 HuggingFace 自动下载模型文件到该目录，请耐心等待。")
+        print("⚠️ 首次使用某个模型时，会从所选下载源自动下载文件到该目录，请耐心等待。")
         print("--------------------------------------------------\n")
         
         self.load_config()
@@ -154,6 +212,8 @@ class WhisperApp:
                 if "vtt" in cfg: self.var_vtt.set(cfg["vtt"])
                 if "txt" in cfg: self.var_txt.set(cfg["txt"])
                 if "device" in cfg: self.device_var.set(cfg["device"])
+                if cfg.get("download_source") in DOWNLOAD_SOURCES:
+                    self.download_source_var.set(cfg["download_source"])
         except Exception:
             pass
 
@@ -164,7 +224,8 @@ class WhisperApp:
                 "srt": self.var_srt.get(),
                 "vtt": self.var_vtt.get(),
                 "txt": self.var_txt.get(),
-                "device": self.device_var.get()
+                "device": self.device_var.get(),
+                "download_source": self.download_source_var.get()
             }
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(cfg, f)
@@ -210,9 +271,11 @@ class WhisperApp:
             return
             
         self.save_config()
+        self.active_download_source = self.download_source_var.get()
         
         self.btn_start.config(state=tk.DISABLED)
         self.btn_select.config(state=tk.DISABLED)
+        self.download_source_cb.config(state=tk.DISABLED)
         self.btn_stop.config(state=tk.NORMAL)
         self.is_running = True
         
@@ -228,6 +291,7 @@ class WhisperApp:
     def process_files(self):
         model_size = self.model_var.get()
         device_choice = self.device_var.get()
+        download_source = self.active_download_source
         device_str = "cuda" if "GPU" in device_choice else "cpu"
         compute_type_str = "float16" if device_str == "cuda" else "int8"
         
@@ -241,6 +305,15 @@ class WhisperApp:
         print(f"\n==================================================")
         print(f"▶️ 正在召唤 {device_str.upper()} 加载【{model_size}】模型 (初次约需几秒至几分钟下载)...")
         print(f"📁 模型存储路径: {MODELS_DIR}")
+        endpoint = configure_hf_download_source(download_source)
+        print(f"🌐 模型下载源: {download_source} ({endpoint})")
+        if download_source == OFFICIAL_DOWNLOAD_SOURCE:
+            if has_hf_auth_token():
+                print("🔐 已检测到 Hugging Face 登录凭据，将使用登录额度下载。")
+            else:
+                print("ℹ️ 未检测到登录凭据：公开模型仍可正常匿名下载，相关 Warning 仅表示限速。")
+        else:
+            print("ℹ️ 国内镜像模式不会向第三方镜像发送 HF_TOKEN。")
         
         try:
             from faster_whisper import WhisperModel
@@ -251,7 +324,13 @@ class WhisperApp:
             
         try:
             os.makedirs(MODELS_DIR, exist_ok=True)
-            model = WhisperModel(model_size, device=device_str, compute_type=compute_type_str, download_root=MODELS_DIR)
+            model = WhisperModel(
+                model_size,
+                device=device_str,
+                compute_type=compute_type_str,
+                download_root=MODELS_DIR,
+                use_auth_token=False if download_source == MIRROR_DOWNLOAD_SOURCE else None,
+            )
             print(f"✅ 模型加载成功！{device_str.upper()} 已就绪！")
         except Exception as e:
             print(f"❌ 模型加载失败: {e}")
@@ -339,6 +418,7 @@ class WhisperApp:
         self.is_running = False
         self.root.after(0, lambda: self.btn_start.config(state=tk.NORMAL))
         self.root.after(0, lambda: self.btn_select.config(state=tk.NORMAL))
+        self.root.after(0, lambda: self.download_source_cb.config(state="readonly"))
         self.root.after(0, lambda: self.btn_stop.config(state=tk.DISABLED))
 
     def get_dir_size_str(self, path):
